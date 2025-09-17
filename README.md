@@ -4,7 +4,19 @@ A modular R pipeline for translating, cleaning, and clustering multilingual surv
 
 ---
 
-## Overview
+## 📑 Table of Contents
+- [Overview](#-overview)
+- [Features](#-features)
+- [Usage](#-usage)
+- [Example Session](#-example-session)
+- [Installation](#-installation)
+- [How It Works](#-how-it-works)
+- [Limitations](#-limitations)
+- [License](#-license)
+
+---
+
+## 📚 Overview
 
 This project provides a workflow for thematic analysis of multilingual text data. It includes:
 
@@ -16,7 +28,7 @@ This project provides a workflow for thematic analysis of multilingual text data
 
 ---
 
-## Features
+## ✨ Features
 
 - Filters missing, short, or corrupted responses  
 - Translates comments to English via MyMemory API  
@@ -27,7 +39,7 @@ This project provides a workflow for thematic analysis of multilingual text data
 
 ---
 
-## Usage
+## 🛠 Usage
 
 ### Step 1: Prepare your data
 
@@ -51,7 +63,7 @@ source("scripts/04_visualization.R")
 
 ---
 
-## Example Output
+## 📂 Example Output
 
 - `translated_comments.csv`: Translated comments  
 - `clusters.csv`: Cluster labels  
@@ -59,48 +71,33 @@ source("scripts/04_visualization.R")
 
 ---
 
-## Installation
+## 🚀 Installation
 
-### 1. Clone the repository
+1. **Clone the repository**
+	```bash
+	git clone https://github.com/SUPSI-DEASS-CPPS/multilingual_thematic_analysis.git
+	cd multilingual_thematic_analysis
+	```
 
-```bash
-git clone https://github.com/yourusername/multilingual_analysis.git
-```
+2. **Install required R packages**
+	```r
+	install.packages(c(
+	  "tidyverse", "polyglotr", "text2vec", "tm",
+	  "cluster", "factoextra", "ggplot2"
+	))
+	```
 
-### 2. Install required R packages
-
-```r
-install.packages(c(
-  "tidyverse", "polyglotr", "text2vec", "tm",
-  "cluster", "factoextra", "ggplot2"
-))
-```
-
-### 3. Open the project
-
-Open `multilingual_analysis.Rproj` in RStudio.
+3. **Open the project**  
+   Use R or RStudio in the cloned project directory.
 
 ---
 
-## Citation
+## ⚠️ Limitations
 
-If you use this project, please cite:
-
-Salvatore. 2025. *Multilingual Thematic Analysis in R*. GitHub.  
-https://github.com/yourusername/multilingual_analysis
-
-```bibtex
-@misc{salvatore2025multilingual,
-  author       = {Salvatore},
-  title        = {Multilingual Thematic Analysis in R},
-  year         = {2025},
-  howpublished = {https://github.com/yourusername/multilingual_analysis},
-  note         = {Accessed: YYYY-MM-DD}
-}
-```
+- Requires internet access for API queries
 
 ---
 
-## License
+## 📜 License
 
-MIT License. See `LICENSE` file for details.
+MIT License — see [LICENSE](LICENSE) for details.

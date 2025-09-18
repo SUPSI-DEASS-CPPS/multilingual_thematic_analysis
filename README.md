@@ -7,6 +7,7 @@ A modular R pipeline for translating, cleaning, and clustering multilingual surv
 ## 📑 Table of Contents
 - [Overview](#-overview)
 - [Features](#-features)
+- [Project Structure] (#-project-structure)
 - [Usage](#-usage)
 - [Example Session](#-example-session)
 - [Installation](#-installation)
@@ -36,6 +37,28 @@ This project provides a workflow for thematic analysis of multilingual text data
 - Builds a document-term matrix (DTM)  
 - Applies PCA and k-means clustering  
 - Visualizes clusters with ggplot2
+
+---
+
+## 📂 Project Structure
+
+```
+├── data/
+│   └── comments.csv
+├── output/
+│   ├── clean_comments.csv
+│   ├── clusters.csv
+│   ├── dtm.rds
+│   ├── flagged_responses.csv
+│   └── translated_comments.csv
+├── scripts/
+│   ├── 00_validate_responses.R
+│   ├── 01_load_translate.R
+│   ├── 02_preprocess_nlp.R
+│   ├── 03_clustering.R
+│   └── 04_visualization.R
+└── multilingual_analysis.Rproj
+```
 
 ---
 

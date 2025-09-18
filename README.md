@@ -7,7 +7,7 @@ A modular R pipeline for translating, cleaning, and clustering multilingual surv
 ## 📑 Table of Contents
 - [Overview](#-overview)
 - [Features](#-features)
-- [Project Structure] (#-project-structure)
+- [Project Structure](#-project-structure)
 - [Usage](#-usage)
 - [Example Session](#-example-session)
 - [Installation](#-installation)

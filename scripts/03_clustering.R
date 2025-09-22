@@ -1,3 +1,9 @@
+# Environment Clean-Up
+rm(list = ls())        # Remove all objects from environment
+graphics.off()         # Close all open graphics windows
+cat("\014")            # Clear the console (works in RStudio)
+
+# Load required libraries
 library(cluster)
 library(factoextra)
 

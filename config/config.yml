@@ -1,0 +1,42 @@
+paths:
+  raw_data: "data/comments.tsv"
+  output_csv: "output/csv"
+  output_rds: "output/rds"
+  output_png: "output/png"
+  output_html: "output/html"
+  cache: "cache"
+
+translation:
+  min_comment_length: 10
+  max_allowed_issues: 2
+  google_key_env: "GOOGLE_TRANSLATE_KEY"
+
+embeddings:
+  model_id: "text-embedding-004"
+  batch_size: 128
+  timeout_secs: 60
+  gcp_project_env: "GCP_PROJECT"
+  gcp_key_env: "GOOGLE_VERTEX_KEY"
+  location: "us-central1"
+
+clustering:
+  min_docs: 5
+  min_pts: 5
+  umap_dims: 50
+  max_kmeans_k: 10
+  make_plots: true
+
+visualization:
+  max_words: 800
+  min_freq: 1
+  weight_power: 1.2
+  custom_stopwords: ["pt", "(e.g.", "translated", "question"]
+  regex_stopwords: ["^physiothera", "^can$", "^cannot$", "^can’t$", "^without$", "^w/o$"]
+  q_range: [2, 10]
+  background: "white"
+  color: "random-dark"
+  size: 1.5
+  rotateRatio: 0.3
+  png_width: 1600
+  png_height: 1200
+  export_html_always: true

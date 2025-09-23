@@ -1,113 +1,151 @@
-# Environment Clean-Up
-rm(list = ls())
-graphics.off()
-cat("\014")
+# ==============================
+# 01_load_translate.R
+# ==============================
 
-# Load Required Libraries
-library(tidyverse)
-library(stringr)
-library(progressr)
-library(googleLanguageR)
-library(polyglotr)
+# Load utilities and configuration
+source("R/utils.R")
+clear_environment()
+set.seed(42)
 
-# Progress Bar Configuration
+load_required_packages(c(
+  "tidyverse", "stringr", "progressr",
+  "googleLanguageR", "polyglotr", "yaml"
+))
+
+# Load configuration
+config <- yaml::read_yaml("config/config.yml")
+
 options(progressr.delay_stdout = FALSE)
-handlers("cli")  # Shows ETA and progress
+handlers("cli")
 
-# Authenticate Google Cloud using environment variable
-key_path <- Sys.getenv("GOOGLE_TRANSLATE_KEY")
-if (key_path == "") stop("Environment variable 'GOOGLE_TRANSLATE_KEY' not set.")
+# ==============================
+# Authentication
+# ==============================
+key_path <- Sys.getenv(config$translation$google_key_env)
+if (key_path == "") {
+  stop("Environment variable '", config$translation$google_key_env, "' not set. 
+       Please set it to the path of your Google Cloud JSON key.")
+}
 gl_auth(key_path)
 
-# Load Dataset with One Column: comment
-df <- read_csv("output/clean_comments.csv", show_col_types = FALSE)
-
-# Translation Cache
-translation_cache <- new.env()
-
-# Heuristic: Skip texts that are too short or non-linguistic
+# ==============================
+# Helper Functions
+# ==============================
 should_translate <- function(txt) {
-  if (is.na(txt) || str_trim(txt) == "") return(FALSE)
-  txt <- str_trim(txt)
-  if (str_length(txt) < 5) return(FALSE)
-  if (!str_detect(txt, "[a-zA-Z]")) return(FALSE)
-  return(TRUE)
+  !is.na(txt) && str_length(str_trim(txt)) >= config$translation$min_comment_length
 }
 
-# Prepare Texts for Detection and Translation
-comment_data <- df %>%
-  mutate(
-    clean_text = str_replace_all(comment, "[\r\n]", " ") %>% str_trim(),
-    detected_lang = map_chr(clean_text, ~ {
-      detected <- language_detect(.x)
-      if (length(detected) == 0) NA_character_ else detected[1]
-    }),
-    source_lang = detected_lang
-  ) %>%
-  filter(map_lgl(clean_text, should_translate))
-
-# Create Unique Translation Requests
-translation_requests <- comment_data %>%
-  distinct(clean_text, source_lang)
-
-# Retry Logic for Translation
-safe_translate <- function(txt, src, max_attempts = 3) {
-  attempt <- 1
-  result <- NA_character_
-  
-  while (attempt <= max_attempts) {
-    result <- tryCatch({
-      suppressMessages(suppressWarnings(
-        gl_translate(txt, target = "en", source = src)$translatedText
-      ))
-    }, error = function(e) NA_character_)
-    
-    if (!is.na(result) && length(result) >= 1 && is.character(result)) {
-      return(as.character(result[1]))
-    }
-    
-    attempt <- attempt + 1
-    Sys.sleep(1)
+safe_translate_batch <- function(texts, src, batch_size = 100) {
+  if (length(texts) == 0) return(character(0))
+  out <- vector("character", length(texts))
+  for (i in seq(1, length(texts), by = batch_size)) {
+    idx <- i:min(i + batch_size - 1, length(texts))
+    out[idx] <- tryCatch(
+      gl_translate(texts[idx], target = "en", source = src)$translatedText,
+      error = function(e) rep(NA_character_, length(idx))
+    )
   }
-  
-  return(NA_character_)
+  out
 }
 
-# Batch Translate with Progress Bar + Retry
-translated_lookup <- list()
+load_comments <- function(path, cols) {
+  read_csv(path, show_col_types = FALSE) %>%
+    select(ResponseId, UserLanguage, all_of(cols)) %>%
+    pivot_longer(cols = all_of(cols), names_to = "question", values_to = "text") %>%
+    mutate(clean_text = str_replace_all(text, "[\r\n]", " ") %>% str_trim()) %>%
+    filter(map_lgl(clean_text, should_translate))
+}
 
-with_progress({
-  p <- progressor(steps = nrow(translation_requests))
+update_cache <- function(new_data, cache, path) {
+  updated <- bind_rows(cache, new_data) %>%
+    mutate(across(where(is.character), ~ replace_na(.x, "")))
+  saveRDS(updated, path)
+  updated
+}
+
+detect_languages <- function(data, cache_path) {
+  cache <- if (file.exists(cache_path)) readRDS(cache_path) else 
+    tibble(clean_text = character(), detected_lang = character())
   
-  for (i in seq_len(nrow(translation_requests))) {
-    txt <- translation_requests$clean_text[i]
-    src <- translation_requests$source_lang[i]
-    
-    result <- safe_translate(txt, src)
-    translation_cache[[txt]] <- result
-    translated_lookup[[txt]] <- result
-    p()
-  }
-})
+  to_detect <- anti_join(distinct(data, clean_text), cache, by = "clean_text")
+  if (nrow(to_detect) == 0) return(cache)
+  
+  detected <- tibble(
+    clean_text = to_detect$clean_text,
+    detected_lang = map_chr(to_detect$clean_text, function(txt) {
+      if (is.na(txt) || txt == "") return(NA_character_)
+      res <- tryCatch(language_detect(txt), error = function(e) character(0))
+      if (length(res) == 0) NA_character_ else as.character(res[1])
+    })
+  )
+  
+  update_cache(detected, cache, cache_path)
+}
 
-# Apply Translations Back to Data Frame
-translated_df <- df %>%
+translate_texts <- function(data, cache_path) {
+  cache <- if (file.exists(cache_path)) readRDS(cache_path) else 
+    tibble(clean_text = character(), source_lang = character(), translated = character())
+  
+  requests <- distinct(data, clean_text, source_lang) %>%
+    filter(!is.na(clean_text), !is.na(source_lang)) %>%
+    anti_join(cache, by = c("clean_text", "source_lang"))
+  
+  if (nrow(requests) == 0) return(cache)
+  
+  with_progress({
+    p <- progressor(steps = nrow(requests))
+    new_translations <- requests %>%
+      group_by(source_lang) %>%
+      group_modify(~ {
+        out <- safe_translate_batch(.x$clean_text, .y$source_lang)
+        p(nrow(.x)) # increment per batch
+        tibble(clean_text = .x$clean_text, translated = out)
+      }) %>%
+      ungroup()
+    update_cache(new_translations, cache, cache_path)
+  })
+}
+
+# ==============================
+# Translation Workflow
+# ==============================
+comment_cols <- paste0("Q4.", 2:10)
+input_file   <- file.path(config$paths$output_csv, "00_clean_comments.csv")
+detect_cache_file <- file.path(config$paths$cache, "detect_cache.rds")
+translate_cache_file <- file.path(config$paths$cache, "translation_cache.rds")
+final_output_file <- file.path(config$paths$output_csv, "01_translated_comments.csv")
+
+log_info("Loading comments...")
+comment_data <- load_comments(input_file, comment_cols)
+log_info("Filtered rows:", nrow(comment_data))
+
+log_info("Detecting languages...")
+detect_cache <- detect_languages(comment_data, detect_cache_file)
+
+comment_data <- comment_data %>%
+  left_join(detect_cache, by = "clean_text") %>%
+  mutate(source_lang = if_else(
+    is.na(clean_text) | clean_text == "", NA_character_,
+    if_else(detected_lang == UserLanguage, UserLanguage, detected_lang)
+  ))
+
+log_info("Detected languages:", sum(!is.na(comment_data$source_lang)))
+
+log_info("Translating texts...")
+translation_cache <- translate_texts(comment_data, translate_cache_file)
+
+translated_df <- comment_data %>%
+  left_join(translation_cache, by = c("clean_text", "source_lang")) %>%
+  select(ResponseId, UserLanguage, question, translated) %>%
+  pivot_wider(names_from = question, values_from = translated, 
+              names_glue = "{.name}_translated") %>%
+  filter(!if_all(ends_with("_translated"), is.na)) %>%
   mutate(
-    comment_clean = str_replace_all(comment, "[\r\n]", " ") %>% str_trim(),
-    comment_translated = sapply(comment_clean, function(txt) {
-      if (!should_translate(txt)) return(NA_character_)
-      if (exists(txt, envir = translation_cache)) {
-        return(translation_cache[[txt]])
-      } else {
-        return(NA_character_)
-      }
-    }),
-    untranslated_flag = is.na(comment_translated),
-    low_quality_flag = comment == comment_translated |
-                       str_length(comment_translated) < 20 |
-                       !str_detect(comment_translated, " ")
+    untranslated_flag = if_any(ends_with("_translated"), ~ .x %in% c("", NA)),
+    low_quality_flag  = if_any(ends_with("_translated"), ~ str_length(.x) < 20 | !str_detect(.x, " "))
   ) %>%
-  select(comment, comment_translated, untranslated_flag, low_quality_flag)
+  mutate(across(where(is.character), ~ replace_na(.x, "")))
 
-# Save Translated Dataset
-write_csv(translated_df, "output/translated_comments.csv")
+log_info("Final rows:", nrow(translated_df))
+write_csv(translated_df, final_output_file)
+log_info("Translation complete. Saved to:", final_output_file)

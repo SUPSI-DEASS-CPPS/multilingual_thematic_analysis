@@ -1,50 +1,77 @@
-# Environment Clean-Up
+# ==============================
+# 00_validate_responses.R
+# ==============================
 
-rm(list = ls())        # Remove all objects from environment
-graphics.off()         # Close all open graphics windows
-cat("\014")            # Clear the console (works in RStudio)
+# Load utilities and configuration
+source("R/utils.R")
+clear_environment()
+set.seed(42)
 
-# Load required libraries
-library(tidyverse)
-library(stringi)
+load_required_packages(c("tidyverse", "stringi", "yaml"))
 
-# Function to detect encoding and load TSV file
-load_tsv_with_detected_encoding <- function(file_path) {
-  # Read raw bytes to detect encoding
-  raw_bytes <- readBin(file_path, what = "raw", n = 10000)
-  encoding <- tryCatch({
-    stri_enc_detect(raw_bytes)[[1]]$Encoding[1]
-  }, error = function(e) {
-    "UTF-8"  # fallback if detection fails
-  })
-  cat("🔍 Detected encoding:", encoding, "\n")
-  
-  # Load TSV using detected encoding
-  read_tsv(file_path, locale = locale(encoding = encoding))
+# Load configuration
+config <- yaml::read_yaml("config/config.yml")
+
+# ==============================
+# Functions
+# ==============================
+
+# Load TSV with encoding detection
+load_tsv <- function(path) {
+  raw_bytes <- readBin(path, what = "raw", n = 10000)
+  enc_info  <- stri_enc_detect(raw_bytes)[[1]]
+  enc       <- enc_info$Encoding[which.max(enc_info$Confidence)]
+  read_tsv(path, locale = locale(encoding = enc))
 }
 
-# Load the comments dataset
-df <- load_tsv_with_detected_encoding("data/comments.tsv")
+# Flag issues in comments
+flag_issues <- function(df, columns, min_length) {
+  df %>%
+    mutate(across(all_of(columns), list(
+      is_missing = ~ is.na(.) | str_trim(.) == "",
+      is_short   = ~ !is.na(.) & str_length(.) < min_length
+    ))) %>%
+    mutate(total_issues = rowSums(select(., matches("_is_")), na.rm = TRUE))
+}
 
-# Check for missing responses
-missing <- df %>% filter(is.na(comment) | comment == "")
+# ==============================
+# Workflow
+# ==============================
 
-# Check for suspiciously short responses
-short <- df %>% filter(str_length(comment) < 20)
+log_info("Loading input file...")
+df <- load_tsv(config$paths$raw_data)
 
-# Check for encoding issues (look for �)
-encoding_issues <- df %>% filter(str_detect(comment, "�"))
+# Select relevant columns
+comment_cols <- paste0("Q4.", 2:10)
+df <- df %>%
+  select(ResponseId, UserLanguage, all_of(comment_cols))
 
-# Combine flagged rows
-flagged <- bind_rows(missing, short, encoding_issues) %>% distinct()
+# Optionally remove label rows (first two rows)
+if (config$translation$max_allowed_issues > 0 && nrow(df) >= 2) {
+  df <- df[-c(1, 2), ]
+}
 
-# Save flagged rows
-write_csv(flagged, "output/flagged_responses.csv")
+# Flag issues
+log_info("Flagging issues in comments...")
+df_flagged <- flag_issues(df, comment_cols, config$translation$min_comment_length)
 
-# Exclude flagged rows from main dataset
-df_clean <- anti_join(df, flagged, by = "id")  # assumes 'id' column exists
+# Ensure output directory exists
+dir.create(config$paths$output_csv, showWarnings = FALSE, recursive = TRUE)
 
-# Save cleaned dataset for translation
-write_csv(df_clean, "output/clean_comments.csv")
+# Save flagged responses
+flagged_file <- file.path(config$paths$output_csv, "00_flagged_responses.csv")
+df_flagged %>%
+  filter(total_issues > 0) %>%
+  write_csv(flagged_file)
+log_info("Saved flagged responses to:", flagged_file)
 
-cat("✅ Validation complete. Cleaned data saved to output/clean_comments.csv\n")
+# Save cleaned responses
+clean_file <- file.path(config$paths$output_csv, "00_clean_comments.csv")
+df_flagged %>%
+  filter(total_issues <= config$translation$max_allowed_issues) %>%
+  write_csv(clean_file)
+log_info("Saved cleaned responses to:", clean_file)
+
+# Print summary
+log_info("Issue distribution:")
+print(table(df_flagged$total_issues))

@@ -1,0 +1,15 @@
+# ==============================
+# Example .Renviron file
+# ==============================
+# Copy this file to `.Renviron` in the project root
+# and replace the placeholder values with your own.
+# IMPORTANT: Never commit your real `.Renviron` file to GitHub.
+
+# Google Translate API key (path to JSON file)
+GOOGLE_TRANSLATE_KEY=/path/to/google-translate-key.json
+
+# Google Vertex AI service account key (path to JSON file)
+GOOGLE_VERTEX_KEY=/path/to/google-vertex-key.json
+
+# Google Cloud Project ID
+GCP_PROJECT=your-gcp-project-id

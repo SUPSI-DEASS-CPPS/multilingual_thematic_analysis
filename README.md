@@ -238,6 +238,7 @@ Customization tips:
 - To skip wordcloud generation, set `make_plots: false`
 - To use a different embedding model, update `model_id` under `embeddings`
 - To add more stopwords, edit `custom_stopwords` and `regex_stopwords` under `visualization`
+
 ⚠️ After modifying `config.yml`, re-run the affected scripts to apply changes.
 
 ---
@@ -358,7 +359,7 @@ Restart R or RStudio after editing `.Renviron`.
 
 ### Step 4: Install dependencies with renv
 
-This project uses [renv] (https://rstudio.github.io/renv/) for reproducible environments.
+This project uses [renv](https://rstudio.github.io/renv/) for reproducible environments.
 
 1. Install renv if not already installed:
 

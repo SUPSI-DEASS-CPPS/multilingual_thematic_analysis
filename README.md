@@ -12,6 +12,7 @@ Built for multilingual surveys, this pipeline combines cloud-powered translation
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![renv](https://img.shields.io/badge/Reproducible%20Environment-renv-yellow)
 ![Last Updated](https://img.shields.io/badge/Last%20Updated-September%202025-orange)
+[![DOI](https://zenodo.org/badge/1058693381.svg)](https://doi.org/10.5281/zenodo.17185563)
 
 ---
 

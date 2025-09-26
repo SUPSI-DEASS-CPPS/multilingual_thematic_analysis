@@ -14,8 +14,8 @@ Built for multilingual surveys, this pipeline combines cloud-powered translation
 ![Last Updated](https://img.shields.io/badge/Last%20Updated-September%202025-orange)
 [![DOI](https://zenodo.org/badge/1058693381.svg)](https://doi.org/10.5281/zenodo.17185563)
 [![GitHub Verified](https://img.shields.io/badge/Verified-GitHub-blue?logo=github)](https://github.com/salvatoremaione)
-[![Trusted Maintainer](https://img.shields.io/badge/Trusted%20Maintainer-Keybase-8A2BE2?logo=keybase&logoColor=white)](https://keybase.io/salvatore)  
 [![Verified Identity](https://img.shields.io/badge/Verified-ORCID-green?logo=orcid)](https://orcid.org/0000-0002-5944-2589)
+[![Trusted Maintainer](https://img.shields.io/badge/Trusted%20Maintainer-Keybase-8A2BE2?logo=keybase&logoColor=white)](https://keybase.io/salvatore)  
 
 ---
 

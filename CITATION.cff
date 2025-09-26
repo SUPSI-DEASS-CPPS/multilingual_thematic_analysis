@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Multilingual Thematic Analysis"
+version: 1.0.2
+date-released: 2025-09-23
+authors:
+  - family-names: "Maione"
+    given-names: "Salvatore"
+    affiliation: "SUPSI-DEASS-CPPS"
+    orcid: "https://orcid.org/0000-0002-5944-2589"
+repository-code: "https://github.com/SUPSI-DEASS-CPPS/multilingual_thematic_analysis"
+license: "MIT"
+keywords:
+  - multilingual research
+  - thematic analysis
+  - survey methodology
+  - reproducible science

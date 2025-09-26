@@ -13,6 +13,9 @@ Built for multilingual surveys, this pipeline combines cloud-powered translation
 ![renv](https://img.shields.io/badge/Reproducible%20Environment-renv-yellow)
 ![Last Updated](https://img.shields.io/badge/Last%20Updated-September%202025-orange)
 [![DOI](https://zenodo.org/badge/1058693381.svg)](https://doi.org/10.5281/zenodo.17185563)
+[![GitHub Verified](https://img.shields.io/badge/Verified-GitHub-blue?logo=github)](https://github.com/salvatoremaione)
+[![Trusted Maintainer](https://img.shields.io/badge/Trusted%20Maintainer-Keybase-8A2BE2?logo=keybase&logoColor=white)](https://keybase.io/salvatore)  
+[![Verified Identity](https://img.shields.io/badge/Verified-ORCID-green?logo=orcid)](https://orcid.org/0000-0002-5944-2589)
 
 ---
 
@@ -586,7 +589,7 @@ If you build on this pipeline, feel free to fork the repo or open a discussion t
 
 ## 📜 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE). For questions or collaboration inquiries, feel free to reach out via GitHub Issues.
 
 **Acknowledgment:**  
 Documentation and refactoring support were assisted by Microsoft Copilot, an AI companion that helped streamline the pipeline and improve reproducibility.

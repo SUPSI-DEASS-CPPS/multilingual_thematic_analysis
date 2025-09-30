@@ -8,7 +8,7 @@ Built for multilingual surveys, this pipeline combines cloud-powered translation
 
 ## 🛡️ Badges
 
-![R version](https://img.shields.io/badge/R-≥4.1-blue)
+![R version](https://img.shields.io/badge/R-≥4.2-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![renv](https://img.shields.io/badge/Reproducible%20Environment-renv-yellow)
 ![Last Updated](https://img.shields.io/badge/Last%20Updated-September%202025-orange)
@@ -23,26 +23,28 @@ Built for multilingual surveys, this pipeline combines cloud-powered translation
 
 For impatient users, here’s how to get started in 5 steps:
 
-1. **Clone the repo**
+1. **Clone this repository**
    ```bash
    git clone https://github.com/SUPSI-DEASS-CPPS/multilingual_thematic_analysis.git
    cd multilingual_thematic_analysis
    ```
-2. **Set up your .Renviron**
+2. Install R ≥ `4.2` and required packages (see [Dependencies](#-dependencies)).
+   
+3. **Set up your .Renviron**
    ```bash
    cp .Renviron.example .Renviron
    ```
    Edit it with your Google Cloud credentials and restart R.
-   
-3. **Place your survey file** 
+
+4. **Place your survey file** 
    Save your UTF-8 `.tsv` file as `data/comments.tsv`
 
-4. **Restore the environment**
+5. **Restore the environment**
    ```r
    install.packages("renv")
    renv::restore()
    ```
-5. **Run the pipeline**
+6. **Run the pipeline**
    ```r
    source("scripts/00_validate_responses.R")
    source("scripts/01_load_translate.R")
@@ -104,12 +106,11 @@ It’s designed for researchers, analysts, and institutions who need to process 
 - Filters missing, short, or corrupted responses  
 - Detects actual language of each comment  
 - Translates comments to English via Google Cloud Translation API  
-- Retries failed translations up to 3 times  
-- Skips non-linguistic or too-short texts  
-- Cleans and tokenizes text  
-- Builds a document-term matrix (DTM)  
-- Applies PCA and k-means clustering  
-- Visualizes clusters with ggplot2
+- Caches translations and embeddings
+- Generates contextual embeddings via Vertex AI
+- Applies PCA + UMAP + HDBSCAN/KMeans clustering
+- Labels clusters using TF-IDF keywords
+- Generates deterministic wordclouds with ggwordcloud
 
 ---
 
@@ -135,8 +136,7 @@ It’s designed for researchers, analysts, and institutions who need to process 
 │   │       └── all_embeddings.rds
 │   ├── png/
 │   │   └── cluster/
-│   └── html/
-│       └── wordclouds/
+│   │   └── wordclouds/
 ├── cache/
 ├── scripts/
 │   ├── 00_validate_responses.R
@@ -158,7 +158,7 @@ It’s designed for researchers, analysts, and institutions who need to process 
 
 Before running the pipeline, ensure you have the following:
 
-- **R ≥ 4.1** installed on your system  
+- **R ≥ 4.2** installed on your system  
 - **RStudio** (recommended for easier script execution and environment management)  
 - **Google Cloud account** with access to:
   - Cloud Translation API
@@ -220,6 +220,7 @@ This file controls all major parameters across the scripts, making the pipeline 
 - `embeddings`: Model ID, batch size, timeout, and environment variables for Vertex AI  
 - `clustering`: UMAP dimensions, minimum documents, clustering method settings, and plot toggle  
 - `visualization`: Wordcloud settings including max words, stopwords, colors, and export formats
+- `question_stopwords`: Question-specific stopwords
 
 ### Example snippet:
 
@@ -427,14 +428,8 @@ After running the full pipeline, you’ll find the following outputs:
 - `output/csv/cluster/clusters_Q4.X_translated.csv`  
   → Cluster assignments and labels for each question (X = 2 to 10)
 
-- `output/png/cluster/clusters_Q4.X_translated_hdbscan_umap.png`  
-  → UMAP plots of clustered embeddings
-
 - `output/png/wordclouds/04_wordclouds_Q4.X_translated_combined.png`  
   → Wordclouds summarizing cluster themes
-
-- `output/html/wordclouds/04_wordclouds_Q4.X_translated_combined.html`  
-  → Interactive HTML wordclouds for exploration
   
 ---
 
@@ -466,10 +461,13 @@ The pipeline consists of five modular R scripts, each performing a distinct stag
    - Outputs cluster assignments and visual plots  
    - Saves `03_clusters_summary.csv` and per-question cluster files
 
-5. **Visualization** (`04_visualization.R`)  
-   - Generates wordclouds for each cluster  
-   - Exports both PNG and HTML versions  
-   - Saves outputs in `output/png/wordclouds/` and `output/html/wordclouds/`
+5. **Visualization** (`04_visualization.R`)
+   - Cleans and tokenizes text using `stringi` + `quanteda`
+   - Applies both global and question‑specific stopwords (from `config.yml`)
+   - Optionally removes regex‑based stopwords
+   - Aggregates token frequencies and scales weights deterministically
+   - Generates wordclouds for each cluster 
+   - Saves outputs in `output/png/wordclouds/`
 
 Each script is standalone and can be run independently, but they are designed to work sequentially for full pipeline execution.
 

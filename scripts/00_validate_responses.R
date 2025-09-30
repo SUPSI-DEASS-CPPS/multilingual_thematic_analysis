@@ -2,76 +2,77 @@
 # 00_validate_responses.R
 # ==============================
 
-# Load utilities and configuration
+# Init
 source("R/utils.R")
 clear_environment()
 set.seed(42)
 
-load_required_packages(c("tidyverse", "stringi", "yaml"))
+load_required_packages(c("tidyverse", "stringi", "yaml", "readr"))
 
-# Load configuration
+# Config
 config <- yaml::read_yaml("config/config.yml")
 
-# ==============================
-# Functions
-# ==============================
+# Ensure output dirs
+ensure_dir(config$paths$output_csv)
 
-# Load TSV with encoding detection
-load_tsv <- function(path) {
+# ------------------------------
+# Helpers
+# ------------------------------
+load_tsv_detect_encoding <- function(path) {
   raw_bytes <- readBin(path, what = "raw", n = 10000)
-  enc_info  <- stri_enc_detect(raw_bytes)[[1]]
+  enc_info  <- stringi::stri_enc_detect(raw_bytes)[[1]]
   enc       <- enc_info$Encoding[which.max(enc_info$Confidence)]
-  read_tsv(path, locale = locale(encoding = enc))
+  readr::read_tsv(path, locale = readr::locale(encoding = enc), show_col_types = FALSE)
 }
 
-# Flag issues in comments
 flag_issues <- function(df, columns, min_length) {
   df %>%
     mutate(across(all_of(columns), list(
-      is_missing = ~ is.na(.) | str_trim(.) == "",
-      is_short   = ~ !is.na(.) & str_length(.) < min_length
+      is_missing = ~ is.na(.) | stringr::str_trim(.) == "",
+      is_short   = ~ !is.na(.) & stringr::str_length(.) < min_length
     ))) %>%
-    mutate(total_issues = rowSums(select(., matches("_is_")), na.rm = TRUE))
+    mutate(total_issues = rowSums(dplyr::select(., tidyselect::matches("_is_")), na.rm = TRUE))
 }
 
-# ==============================
+# ------------------------------
 # Workflow
-# ==============================
+# ------------------------------
+log_info("Loading input: {config$paths$raw_data}")
+df <- load_tsv_detect_encoding(config$paths$raw_data)
 
-log_info("Loading input file...")
-df <- load_tsv(config$paths$raw_data)
+# Allow column override via config, else default Q4.2–Q4.10
+comment_cols <- if (!is.null(config$input$comment_cols)) {
+  config$input$comment_cols
+} else {
+  paste0("Q4.", 2:10)
+}
 
-# Select relevant columns
-comment_cols <- paste0("Q4.", 2:10)
-df <- df %>%
-  select(ResponseId, UserLanguage, all_of(comment_cols))
+df <- df %>% dplyr::select(ResponseId, UserLanguage, dplyr::all_of(comment_cols))
 
 # Optionally remove label rows (first two rows)
-if (config$translation$max_allowed_issues > 0 && nrow(df) >= 2) {
+if (isTRUE(config$translation$drop_label_rows) && nrow(df) >= 2) {
   df <- df[-c(1, 2), ]
+  log_info("Dropped the first two label rows.")
 }
 
-# Flag issues
-log_info("Flagging issues in comments...")
+log_info("Flagging issues with min length = {config$translation$min_comment_length}")
 df_flagged <- flag_issues(df, comment_cols, config$translation$min_comment_length)
 
-# Ensure output directory exists
-dir.create(config$paths$output_csv, showWarnings = FALSE, recursive = TRUE)
-
-# Save flagged responses
+# Save outputs
 flagged_file <- file.path(config$paths$output_csv, "00_flagged_responses.csv")
-df_flagged %>%
-  filter(total_issues > 0) %>%
-  write_csv(flagged_file)
-log_info("Saved flagged responses to:", flagged_file)
+clean_file   <- file.path(config$paths$output_csv, "00_clean_comments.csv")
 
-# Save cleaned responses
-clean_file <- file.path(config$paths$output_csv, "00_clean_comments.csv")
-df_flagged %>%
-  filter(total_issues <= config$translation$max_allowed_issues) %>%
-  write_csv(clean_file)
-log_info("Saved cleaned responses to:", clean_file)
+safe_write_csv(
+  df_flagged %>% dplyr::filter(total_issues > 0),
+  flagged_file
+)
+safe_write_csv(
+  df_flagged %>% dplyr::filter(total_issues <= config$translation$max_allowed_issues),
+  clean_file
+)
 
-# Print summary
-log_info("Issue distribution:")
+log_info("Saved flagged: {flagged_file}")
+log_info("Saved cleaned: {clean_file}")
+
+log_info("Issue distribution table:")
 print(table(df_flagged$total_issues))

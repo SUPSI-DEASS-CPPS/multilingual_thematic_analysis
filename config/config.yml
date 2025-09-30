@@ -30,6 +30,7 @@ visualization:
   max_words: 800
   min_freq: 1
   weight_power: 1.2
+  # Global stopwords (always removed)
   custom_stopwords: ["pt", "(e.g.", "translated", "question"]
   regex_stopwords: ["^physiothera", "^can$", "^cannot$", "^can’t$", "^without$", "^w/o$"]
   q_range: [2, 10]
@@ -40,3 +41,16 @@ visualization:
   png_width: 1600
   png_height: 1200
   export_html_always: true
+
+# Question-specific stopwords
+question_stopwords:
+  Q4.2_translated: ["costs", "effective", "save", "saved", "direct", "therapy", "cost"]
+  Q4.3_translated: ["direct", "costs", "+", "services", "models", "processes"]
+  Q4.4_translated: ["quality", "development", "continuous", "degrees", "bsc", "bachelors", "msc", "advanced", "care", "continuing", "education", "degree", "professional", "professionals"]
+  Q4.5_translated: ["tools", "measuring", "measurements"]
+  Q4.6_translated: ["disability", "treatment", "classify", "classifications", "classification"]
+  Q4.7_translated: ["contextual", "experiences", "context", "factors"]
+  Q4.8_translated: ["response", "prognosis", "outcome", "prognostic"]
+  Q4.9_translated: ["clinical", "decision", "decisions", "deciding"]
+  Q4.10_translated: ["data", "technology", "technologies", "technological"]
+  

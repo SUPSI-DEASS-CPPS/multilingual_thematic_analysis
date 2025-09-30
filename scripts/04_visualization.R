@@ -1,124 +1,163 @@
 # ==============================
-# 04_visualization.R
+# 04_visualization.R (Deterministic, Quanteda + ggwordcloud)
 # ==============================
 
-# Load utilities and configuration
+# Init
 source("R/utils.R")
 clear_environment()
 set.seed(42)
 
 load_required_packages(c(
-  "readr", "RColorBrewer", "tools", "dplyr", "purrr", "stopwords",
-  "htmlwidgets", "htmltools", "wordcloud2", "webshot2", "yaml"
+  "readr", "dplyr", "purrr", "yaml", "stopwords", "stringi",
+  "ggplot2", "ggwordcloud", "quanteda", "RColorBrewer", "tools"
 ))
 
-# Load configuration
+# Config
 config <- yaml::read_yaml("config/config.yml")
+viz <- config$visualization
 
-# Ensure output dirs exist
-walk(config$paths, ~dir.create(.x, recursive = TRUE, showWarnings = FALSE))
+# Ensure output dirs
+purrr::walk(config$paths, ~ensure_dir(.x))
+ensure_dir(file.path(config$paths$output_png, "wordclouds"))
+ensure_dir(file.path(config$paths$output_csv, "cluster"))
 
-# ==============================
+# ------------------------------
+# Precompute stopwords & regex
+# ------------------------------
+global_sw <- unique(c(stopwords::stopwords("en"), tolower(viz$custom_stopwords %||% character(0))))
+stopword_map <- purrr::map(config$question_stopwords, ~unique(c(global_sw, tolower(.x))))
+regex_patterns <- viz$regex_stopwords %||% character(0)
+has_regex <- length(regex_patterns) > 0
+
+# ------------------------------
 # Helpers
-# ==============================
+# ------------------------------
 sanitize_text <- function(x) {
-  gsub("[[:cntrl:]<>]|<[^>]*>|&[a-zA-Z0-9#]+;", " ", x) |> trimws()
+  stringi::stri_trim_both(
+    stringi::stri_trans_general(
+      stringi::stri_replace_all_regex(x, "[[:cntrl:]<>]|<[^>]*>|&[a-zA-Z0-9#]+;", " "),
+      "Any-Lower"
+    )
+  )
 }
 
-sanitize_terms <- function(df, custom_stopwords, regex_stopwords) {
-  sw <- unique(c(stopwords::stopwords("en"), tolower(custom_stopwords)))
-  regex_combined <- paste(regex_stopwords, collapse = "|")
-  df %>%
-    mutate(term = tolower(sanitize_text(term)),
-           term = gsub("[[:punct:]]", "", term)) %>%
-    filter(nzchar(term),
-           !term %in% sw,
-           !grepl(regex_combined, term))
+audit_log <- function(q, before_chars, before_tokens, after_tokens, sw_global_len, sw_question_len, regex_len) {
+  log_info("Audit {q} | chars:{before_chars} | tokens before:{before_tokens} | tokens after:{after_tokens} | global sw:{sw_global_len} | question sw:{sw_question_len} | regex:{regex_len}")
 }
 
-save_html_safely <- function(widget, out_file) {
-  htmltools::save_html(widget, file = out_file, background = config$visualization$background)
+get_colors <- function(n, color_spec) {
+  if (identical(color_spec, "random-dark")) {
+    pal <- RColorBrewer::brewer.pal(8, "Dark2")
+    rep(pal, length.out = n)
+  } else {
+    rep(color_spec %||% "black", n)
+  }
 }
 
-# ==============================
-# Wordcloud Generator
-# ==============================
-generate_combined_wordcloud <- function(data, base_name) {
-  data <- sanitize_terms(data, config$visualization$custom_stopwords, config$visualization$regex_stopwords)
-  if (!nrow(data)) return(invisible(NULL))
+get_angles <- function(n, rotate_ratio) {
+  k <- round(n * rotate_ratio)
+  c(rep(0, n - k), rep(90, k))
+}
+
+build_freq_table <- function(text_vec, q_key) {
+  sw <- stopword_map[[q_key]] %||% global_sw
+  sw_question_len <- max(length(sw) - length(global_sw), 0)
   
-  freqs <- data %>%
-    count(term, wt = freq, name = "freq_sum", sort = TRUE) %>%
-    filter(freq_sum >= config$visualization$min_freq) %>%
-    slice_head(n = config$visualization$max_words)
+  toks <- quanteda::tokens(text_vec, remove_punct = TRUE)
+  toks <- quanteda::tokens_remove(toks, sw, valuetype = "fixed", case_insensitive = TRUE)
+  if (has_regex) {
+    toks <- quanteda::tokens_remove(toks, regex_patterns, valuetype = "regex", case_insensitive = TRUE)
+  }
   
-  if (!nrow(freqs)) return(invisible(NULL))
+  dfm <- quanteda::dfm(toks)
+  freqs <- sort(Matrix::colSums(dfm), decreasing = TRUE)
   
-  freqs <- freqs %>%
-    mutate(weight = (freq_sum ^ config$visualization$weight_power) /
-             max(freq_sum ^ config$visualization$weight_power) * 100)
-  
-  wc <- wordcloud2(freqs,
-                   size = config$visualization$size,
-                   color = config$visualization$color,
-                   backgroundColor = config$visualization$background,
-                   rotateRatio = config$visualization$rotateRatio)
-  
-  png_file  <- file.path(config$paths$output_png, "wordclouds", paste0("04_wordclouds_", base_name, "_combined.png"))
-  html_file <- file.path(config$paths$output_html, "wordclouds", paste0("04_wordclouds_", base_name, "_combined.html"))
-  
-  tryCatch({
-    tmp_html <- tempfile(fileext = ".html")
-    suppressWarnings(htmlwidgets::saveWidget(wc, tmp_html, selfcontained = TRUE))
-    webshot2::webshot(tmp_html, file = png_file,
-                      vwidth = config$visualization$png_width,
-                      vheight = config$visualization$png_height)
-    log_info("Saved PNG:", png_file)
-    
-    if (config$visualization$export_html_always) {
-      htmltools::save_html(wc, file = html_file, background = config$visualization$background)
-      log_info("Also saved HTML:", html_file)
+  tibble::tibble(
+    term = names(freqs),
+    freq_sum = as.numeric(freqs)
+  ) %>%
+    dplyr::filter(freq_sum >= viz$min_freq) %>%
+    dplyr::slice_head(n = viz$max_words) %>%
+    dplyr::mutate(
+      weight = (freq_sum ^ viz$weight_power),
+      weight = weight / max(weight) * 100
+    ) %>%
+    {
+      before_chars <- sum(nchar(text_vec), na.rm = TRUE)
+      before_tokens <- sum(quanteda::ntoken(quanteda::tokens(text_vec, remove_punct = TRUE)))
+      after_tokens <- sum(quanteda::ntoken(toks))
+      audit_log(q_key, before_chars, before_tokens, after_tokens, length(global_sw), sw_question_len, length(regex_patterns))
+      .
     }
-  }, error = function(e) {
-    htmltools::save_html(wc, file = html_file, background = config$visualization$background)
-    log_info("PNG export failed, saved HTML instead:", html_file)
-  })
 }
 
-# ==============================
-# Main Loop
-# ==============================
+render_wordcloud_png <- function(freqs_df, base_name) {
+  if (!nrow(freqs_df)) {
+    log_info("No terms meet thresholds for {base_name}")
+    return(invisible(NULL))
+  }
+  colors <- get_colors(nrow(freqs_df), viz$color)
+  angles <- get_angles(nrow(freqs_df), viz$rotateRatio)
+  
+  set.seed(42)
+  p <- ggplot2::ggplot(freqs_df, ggplot2::aes(label = term, size = weight, color = term, angle = angles)) +
+    ggwordcloud::geom_text_wordcloud_area() +
+    ggplot2::scale_size(range = c(1, 10)) +
+    ggplot2::scale_color_manual(values = colors, guide = "none") +
+    ggplot2::theme_void() +
+    ggplot2::theme(plot.background = ggplot2::element_rect(fill = viz$background, color = viz$background))
+  
+  out_png <- file.path(config$paths$output_png, "wordclouds", paste0("04_wordclouds_", base_name, "_combined.png"))
+  ggplot2::ggsave(
+    filename = out_png,
+    plot = p,
+    width = viz$png_width / 150,
+    height = viz$png_height / 150,
+    dpi = 150,
+    bg = viz$background
+  )
+  log_info("Saved PNG: {out_png}")
+}
+
+# ------------------------------
+# Main
+# ------------------------------
 cluster_dir <- file.path(config$paths$output_csv, "cluster")
-cluster_files <- list.files(cluster_dir,
-                            pattern = "^clusters_Q4\\.[0-9]+_translated\\.csv$",
-                            full.names = TRUE) %>%
-  keep(~as.numeric(sub("^clusters_Q4\\.([0-9]+)_.*", "\\1", basename(.x))) %in% config$visualization$q_range)
+cluster_files_all <- list.files(
+  cluster_dir,
+  pattern = "^clusters_Q4\\.[0-9]+_translated\\.csv$",
+  full.names = TRUE
+)
+cluster_ids <- as.numeric(sub("^clusters_Q4\\.([0-9]+)_.*", "\\1", basename(cluster_files_all)))
+cluster_files <- cluster_files_all[cluster_ids %in% viz$q_range]
 
-log_info("Found", length(cluster_files), "cluster files.")
+log_info("Found {length(cluster_files_all)} candidate files.")
+log_info("Selected {length(cluster_files)} within q_range: {paste(viz$q_range, collapse = ',')}")
 
-walk(cluster_files, function(cluster_path) {
+purrr::walk(cluster_files, function(cluster_path) {
   base_name <- gsub("^clusters_", "", tools::file_path_sans_ext(basename(cluster_path)))
-  clustered_df <- suppressMessages(readr::read_csv(cluster_path, show_col_types = FALSE))
+  q_key <- base_name
+  log_info("Processing: {base_name}")
   
-  if (!all(c("text", "cluster", "cluster_label") %in% names(clustered_df))) {
-    log_info("Skipping", base_name, "- missing required columns.")
+  clustered_df <- suppressMessages(readr::read_csv(
+    cluster_path,
+    col_select = c(text, cluster, cluster_label),
+    show_col_types = FALSE
+  ))
+  
+  required_cols <- c("text", "cluster", "cluster_label")
+  if (!all(required_cols %in% names(clustered_df))) {
+    log_warn("Skipping {base_name} — missing required columns.")
+    return()
+  }
+  if (all(is.na(clustered_df$text))) {
+    log_warn("Skipping {base_name} — text column is empty.")
     return()
   }
   
-  wc_data <- clustered_df %>%
-    mutate(text = sanitize_text(text)) %>%
-    group_by(cluster) %>%
-    summarise(term = unlist(strsplit(paste(text, collapse = " "), "\\s+")),
-              .groups = "drop") %>%
-    count(cluster, term, name = "freq") %>%
-    filter(nzchar(term), !grepl("<|>", term))
-  
-  if (!nrow(wc_data)) {
-    log_info("No terms after cleaning for", base_name)
-    return()
-  }
-  
-  generate_combined_wordcloud(wc_data, base_name)
+  all_text <- sanitize_text(paste(clustered_df$text, collapse = " "))
+  freqs_df <- build_freq_table(all_text, q_key)
+  render_wordcloud_png(freqs_df, base_name)
 })
 
 log_info("All wordclouds generated.")
